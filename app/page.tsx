@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { jwtVerify } from "jose";
+import Dashboard from "@/components/Dashboard";
 
 async function isAuthenticated() {
   const token = (await cookies()).get("accessToken")?.value;
@@ -25,12 +26,5 @@ export default async function Home() {
     redirect("/login");
   }
 
-  return (
-    <main className="min-h-screen bg-zinc-100 px-4 py-10">
-      <section className="mx-auto max-w-3xl rounded-xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <h1 className="text-3xl font-semibold text-zinc-900">Portfolio Admin</h1>
-        <p className="mt-3 text-zinc-700">You are logged in with JWT authentication.</p>
-      </section>
-    </main>
-  );
+  return <Dashboard />;
 }

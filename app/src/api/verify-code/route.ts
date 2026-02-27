@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import ConnectDB from "../../lib/server/dbConnect";
 import { User } from "../../models/user";
+import { ApiError, handleApiError } from "../../utils/ApiError";
+import { ApiResponse } from "../../utils/ApiResponse";
 
 export async function POST(req: NextRequest) {
   try {
     const { email, otp } = await req.json();
 
     if (!email?.trim() || !otp?.trim()) {
-      return NextResponse.json(
-        { success: false, message: "Email and OTP are required" },
-        { status: 400 }
-      );
+      throw new ApiError(400, "Email and OTP are required");
     }
 
     await ConnectDB();
@@ -18,33 +17,21 @@ export async function POST(req: NextRequest) {
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user) {
-      return NextResponse.json(
-        { success: false, message: "User not found" },
-        { status: 404 }
-      );
+      throw new ApiError(404, "User not found");
     }
 
     if (user.isVerified) {
-      return NextResponse.json(
-        { success: false, message: "Account is already verified" },
-        { status: 400 }
-      );
+      throw new ApiError(400, "Account is already verified");
     }
 
     // Check if OTP has expired
     if (user.VerifyCodeExpiry && user.VerifyCodeExpiry < new Date()) {
-      return NextResponse.json(
-        { success: false, message: "OTP has expired. Please sign up again." },
-        { status: 400 }
-      );
+      throw new ApiError(400, "OTP has expired. Please sign up again.");
     }
 
     // Check if OTP matches
     if (user.verifyCode !== otp.trim()) {
-      return NextResponse.json(
-        { success: false, message: "Invalid OTP" },
-        { status: 400 }
-      );
+      throw new ApiError(400, "Invalid OTP");
     }
 
     // Mark user as verified and clear OTP fields
@@ -54,14 +41,10 @@ export async function POST(req: NextRequest) {
     await user.save({ validateBeforeSave: false });
 
     return NextResponse.json(
-      { success: true, message: "Email verified successfully. You can now login." },
+      new ApiResponse(200, null, "Email verified successfully. You can now login."),
       { status: 200 }
     );
-  } catch (error: any) {
-    console.error("Verify code error:", error.message);
-    return NextResponse.json(
-      { success: false, message: "Something went wrong" },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 }

@@ -2,16 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import ConnectDB from "../../lib/server/dbConnect";
 import { User } from "../../models/user";
 import { sendVerificationEmail } from "@/helpers/SendVerificationEmail";
+import { ApiError, handleApiError } from "../../utils/ApiError";
+import { ApiResponse } from "../../utils/ApiResponse";
 
 export async function POST(req: NextRequest) {
   try {
     const { email, password } = await req.json();
 
     if (!email?.trim() || !password?.trim()) {
-      return NextResponse.json(
-        { success: false, message: "Email and password are required" },
-        { status: 400 }
-      );
+      throw new ApiError(400, "Email and password are required");
     }
 
     await ConnectDB();
@@ -20,10 +19,7 @@ export async function POST(req: NextRequest) {
     const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (existingUser && existingUser.isVerified) {
-      return NextResponse.json(
-        { success: false, message: "User already exists with this email" },
-        { status: 409 }
-      );
+      throw new ApiError(409, "User already exists with this email");
     }
 
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -54,24 +50,14 @@ export async function POST(req: NextRequest) {
     );
 
     if (!emailResponse.success) {
-      return NextResponse.json(
-        { success: false, message: emailResponse.message },
-        { status: 500 }
-      );
+      throw new ApiError(500, emailResponse.message);
     }
 
     return NextResponse.json(
-      {
-        success: true,
-        message: "Account created. Verification OTP sent to your email.",
-      },
+      new ApiResponse(201, null, "Account created. Verification OTP sent to your email."),
       { status: 201 }
     );
-  } catch (error: any) {
-    console.error("Signup error:", error.message);
-    return NextResponse.json(
-      { success: false, message: "Something went wrong" },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return handleApiError(error);
   }
 }

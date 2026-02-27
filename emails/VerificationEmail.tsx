@@ -56,7 +56,7 @@ export default function VerificationEmail({ username, otp }: VerificationEmailPr
           </Row>
            <Row>
             <Button
-              href={`http://localhost:3000/verify-code/${username}`}
+              href={`${process.env.NODE_ENV == 'production' ? 'http://localhost:3000' : process.env.NEXT_PUBLIC_APP_URL}/verify-code/${username}`}
               style={{ color: '#61dafb' }}
             >
               Verify here

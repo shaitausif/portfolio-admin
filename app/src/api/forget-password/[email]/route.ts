@@ -2,6 +2,8 @@ import { User } from "@/app/src/models/user";
 import ConnectDB from "@/app/src/lib/server/dbConnect";
 import { NextRequest, NextResponse } from "next/server";
 import { sendVerificationEmail } from "@/helpers/SendVerificationEmail";
+import { ApiError, handleApiError } from "@/app/src/utils/ApiError";
+import { ApiResponse } from "@/app/src/utils/ApiResponse";
 
 export async function GET(req: NextRequest,{params}: {params: Promise<{email: string}>}){
     try {
@@ -9,7 +11,7 @@ export async function GET(req: NextRequest,{params}: {params: Promise<{email: st
         const email = decodeURIComponent(rawEmail).toLowerCase().trim()
 
         if (!email) {
-            return NextResponse.json({ success: false, message: "Email is required" }, { status: 400 })
+            throw new ApiError(400, "Email is required")
         }
 
         // Connect to the DB
@@ -19,10 +21,7 @@ export async function GET(req: NextRequest,{params}: {params: Promise<{email: st
         })
 
         if(!user){
-            return NextResponse.json({
-                success : false, 
-                message : "User not found"
-            },{status : 404})
+            throw new ApiError(404, "User not found")
         }
 
         const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -33,18 +32,16 @@ export async function GET(req: NextRequest,{params}: {params: Promise<{email: st
     const emailResponse = await sendVerificationEmail(user.email, "Admin", verificationCode)
 
         if(!emailResponse.success){
-            return NextResponse.json({success : false, message : emailResponse.message},{status : 400})
+            throw new ApiError(400, emailResponse.message)
         }
 
-        return NextResponse.json({
-            success : true ,
-            email : user.email,
-            message : "OTP Sent Successfully"
-        },{status : 200})
+        return NextResponse.json(
+            new ApiResponse(200, { email: user.email }, "OTP Sent Successfully"),
+            { status: 200 }
+        )
 
 
-    } catch (error) {
-        const message = error instanceof Error ? error.message : "Internal server error"
-        return NextResponse.json({success : false, message},{status : 500})
+    } catch (error: unknown) {
+        return handleApiError(error)
     }
 }
