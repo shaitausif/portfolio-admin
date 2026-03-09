@@ -1,19 +1,32 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+export interface TechStackItem {
+  name: string;
+  image: string;
+}
+
 export interface ProjectDocument extends Document {
   _id: mongoose.Types.ObjectId;
   title: string;
   description: string;
   imageUrl: string;
   screenshots?: string[];
-  technologies: string[];
-  liveLink: string;
-  githubLink?: string;
+  techStack: TechStackItem[];
+  liveUrl: string;
+  githubUrl?: string;
   featured: boolean;
   order?: number;
   createdAt: Date;
   updatedAt: Date;
 }
+
+const techStackItemSchema = new Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    image: { type: String, required: true },
+  },
+  { _id: false }
+);
 
 const projectSchema = new Schema<ProjectDocument>(
   {
@@ -34,16 +47,17 @@ const projectSchema = new Schema<ProjectDocument>(
       type: [String],
       required: false,
     },
-    technologies: {
-      type: [String],
+    techStack: {
+      type: [techStackItemSchema],
       required: true,
     },
-    liveLink: {
+    liveUrl: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
+      default: "",
     },
-    githubLink: {
+    githubUrl: {
       type: String,
       required: false,
       trim: true,
@@ -60,6 +74,9 @@ const projectSchema = new Schema<ProjectDocument>(
   { timestamps: true }
 );
 
-export const Project =
-  mongoose.models.Project ||
-  mongoose.model<ProjectDocument>("Project", projectSchema);
+// Delete cached model to pick up schema changes during hot-reload
+if (mongoose.models.Project) {
+  delete mongoose.models.Project;
+}
+
+export const Project = mongoose.model<ProjectDocument>("Project", projectSchema);

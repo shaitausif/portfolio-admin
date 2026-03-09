@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useRef, FormEvent } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "react-toastify";
 import { motion, AnimatePresence } from "motion/react";
 import Modal from "./Modal";
@@ -12,6 +14,7 @@ import {
   updateSkill,
   deleteSkill,
 } from "@/helpers/api";
+import { skillSchema, type SkillFormData } from "@/lib/schemas";
 
 interface SkillData {
   _id: string;
@@ -38,14 +41,23 @@ export default function SkillsSection() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<SkillData | null>(null);
 
-  // Form state
-  const [name, setName] = useState("");
-  const [level, setLevel] = useState(50);
+  // File state
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [category, setCategory] = useState("");
-  const [description, setDescription] = useState("");
   const logoRef = useRef<HTMLInputElement>(null);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { errors },
+  } = useForm<SkillFormData>({
+    resolver: zodResolver(skillSchema),
+    defaultValues: { level: 50 },
+  });
+
+  const level = watch("level");
 
   const fetchData = async () => {
     await requestHandler(
@@ -58,26 +70,28 @@ export default function SkillsSection() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const resetForm = () => {
-    setName(""); setLevel(50); setLogoFile(null); setLogoPreview(null);
-    setCategory(""); setDescription("");
+  const resetFileState = () => {
+    setLogoFile(null); setLogoPreview(null);
     if (logoRef.current) logoRef.current.value = "";
   };
 
   const openCreate = () => {
     setEditItem(null);
-    resetForm();
+    reset({ name: "", level: 50, category: "", description: "" });
+    resetFileState();
     setModalOpen(true);
   };
 
   const openEdit = (item: SkillData) => {
     setEditItem(item);
-    setName(item.name);
-    setLevel(item.level);
+    reset({
+      name: item.name,
+      level: item.level,
+      category: item.category || "",
+      description: item.description || "",
+    });
     setLogoFile(null);
     setLogoPreview(item.logo || null);
-    setCategory(item.category || "");
-    setDescription(item.description || "");
     if (logoRef.current) logoRef.current.value = "";
     setModalOpen(true);
   };
@@ -95,19 +109,17 @@ export default function SkillsSection() {
     );
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-
+  const onSubmit = async (data: SkillFormData) => {
     if (!editItem && !logoFile) {
       toast.error("Skill logo is required");
       return;
     }
 
     const fd = new FormData();
-    fd.append("name", name);
-    fd.append("level", String(level));
-    if (category) fd.append("category", category);
-    if (description) fd.append("description", description);
+    fd.append("name", data.name);
+    fd.append("level", String(data.level));
+    fd.append("category", data.category || "");
+    fd.append("description", data.description || "");
     if (logoFile) fd.append("logo", logoFile);
     if (editItem) fd.append("_id", editItem._id);
 
@@ -227,9 +239,10 @@ export default function SkillsSection() {
       )}
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editItem ? "Edit Skill" : "Add Skill"}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Field label="Name" required>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input-field" placeholder="e.g. React, Node.js" required />
+            <input type="text" {...register("name")} className="input-field" placeholder="e.g. React, Node.js" />
+            {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>}
           </Field>
           <Field label="Logo" required={!editItem}>
             {logoPreview && (
@@ -249,14 +262,14 @@ export default function SkillsSection() {
             />
           </Field>
           <Field label={`Level (${level}%)`} required>
-            <input type="range" min={0} max={100} value={level} onChange={(e) => setLevel(Number(e.target.value))} className="w-full accent-zinc-800" />
+            <input type="range" min={0} max={100} {...register("level", { valueAsNumber: true })} className="w-full accent-zinc-800" />
             <div className="flex justify-between text-xs text-zinc-400 mt-1"><span>0%</span><span>50%</span><span>100%</span></div>
           </Field>
           <Field label="Category">
-            <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} className="input-field" placeholder="e.g. Frontend, Backend, DevOps" />
+            <input type="text" {...register("category")} className="input-field" placeholder="e.g. Frontend, Backend, DevOps" />
           </Field>
           <Field label="Description">
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="input-field min-h-14 resize-y" placeholder="Optional description" />
+            <textarea {...register("description")} className="input-field min-h-14 resize-y" placeholder="Optional description" />
           </Field>
           <div className="flex justify-end gap-3 pt-2">
             <motion.button type="button" onClick={() => setModalOpen(false)} className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 cursor-pointer" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>Cancel</motion.button>

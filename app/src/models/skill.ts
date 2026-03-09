@@ -42,5 +42,5 @@ const skillSchema = new Schema<SkillDocument>(
 );
 
 export const Skill =
-  mongoose.models.Skill ||
+  mongoose?.models?.Skill ||
   mongoose.model<SkillDocument>("Skill", skillSchema);

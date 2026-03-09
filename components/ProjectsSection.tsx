@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useRef, FormEvent } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "react-toastify";
 import { motion, AnimatePresence } from "motion/react";
 import Modal from "./Modal";
@@ -12,15 +14,23 @@ import {
   updateProject,
   deleteProject,
 } from "@/helpers/api";
+import { projectSchema, type ProjectFormData } from "@/lib/schemas";
+
+interface TechStackEntry {
+  name: string;
+  image: string;          // existing Cloudinary URL
+  file: File | null;      // new file to upload
+  preview: string | null; // blob preview
+}
 
 interface ProjectData {
   _id: string;
   title: string;
   description: string;
   imageUrl: string;
-  technologies: string[];
-  liveLink: string;
-  githubLink?: string;
+  techStack: { name: string; image: string }[];
+  liveUrl: string;
+  githubUrl?: string;
   featured: boolean;
   order?: number;
   screenshots?: string[];
@@ -42,19 +52,22 @@ export default function ProjectsSection() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<ProjectData | null>(null);
 
-  // Form state
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  // File state
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [technologies, setTechnologies] = useState("");
-  const [liveLink, setLiveLink] = useState("");
-  const [githubLink, setGithubLink] = useState("");
-  const [featured, setFeatured] = useState(false);
-  const [order, setOrder] = useState("");
   const [screenshotFiles, setScreenshotFiles] = useState<FileList | null>(null);
+  const [techStackEntries, setTechStackEntries] = useState<TechStackEntry[]>([]);
   const imageRef = useRef<HTMLInputElement>(null);
   const screenshotsRef = useRef<HTMLInputElement>(null);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<ProjectFormData>({
+    resolver: zodResolver(projectSchema),
+  });
 
   const fetchData = async () => {
     await requestHandler(
@@ -67,33 +80,41 @@ export default function ProjectsSection() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const resetForm = () => {
-    setTitle(""); setDescription(""); setImageFile(null);
-    setImagePreview(null); setTechnologies(""); setLiveLink("");
-    setGithubLink(""); setFeatured(false); setOrder("");
-    setScreenshotFiles(null);
+  const resetFileState = () => {
+    setImageFile(null); setImagePreview(null); setScreenshotFiles(null);
+    setTechStackEntries([]);
     if (imageRef.current) imageRef.current.value = "";
     if (screenshotsRef.current) screenshotsRef.current.value = "";
   };
 
   const openCreate = () => {
     setEditItem(null);
-    resetForm();
+    reset({ title: "", description: "", liveUrl: "", githubUrl: "", featured: false, order: "" });
+    resetFileState();
     setModalOpen(true);
   };
 
   const openEdit = (item: ProjectData) => {
     setEditItem(item);
-    setTitle(item.title);
-    setDescription(item.description);
+    reset({
+      title: item.title,
+      description: item.description,
+      liveUrl: item.liveUrl || "",
+      githubUrl: item.githubUrl || "",
+      featured: item.featured || false,
+      order: item.order != null ? String(item.order) : "",
+    });
     setImageFile(null);
     setImagePreview(item.imageUrl || null);
-    setTechnologies(item.technologies.join(", "));
-    setLiveLink(item.liveLink);
-    setGithubLink(item.githubLink || "");
-    setFeatured(item.featured || false);
-    setOrder(item.order != null ? String(item.order) : "");
     setScreenshotFiles(null);
+    setTechStackEntries(
+      (item.techStack || []).map((t) => ({
+        name: t.name,
+        image: t.image,
+        file: null,
+        preview: t.image,
+      }))
+    );
     if (imageRef.current) imageRef.current.value = "";
     if (screenshotsRef.current) screenshotsRef.current.value = "";
     setModalOpen(true);
@@ -112,33 +133,47 @@ export default function ProjectsSection() {
     );
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    const techArray = technologies.split(",").map((t) => t.trim()).filter(Boolean);
-
-    if (techArray.length === 0) {
-      toast.error("Add at least one technology");
-      return;
-    }
-
+  const onSubmit = async (data: ProjectFormData) => {
     if (!editItem && !imageFile) {
       toast.error("Project image is required");
       return;
     }
 
+    // Validate tech stack
+    const validTech = techStackEntries.filter((t) => t.name.trim());
+    if (!validTech.length) {
+      toast.error("Add at least one tech stack item");
+      return;
+    }
+    for (const t of validTech) {
+      if (!t.file && !t.image) {
+        toast.error(`Image is required for tech: ${t.name}`);
+        return;
+      }
+    }
+
     const fd = new FormData();
-    fd.append("title", title);
-    fd.append("description", description);
-    fd.append("technologies", JSON.stringify(techArray));
-    fd.append("liveLink", liveLink);
-    if (githubLink) fd.append("githubLink", githubLink);
-    fd.append("featured", String(featured));
-    if (order) fd.append("order", order);
+    fd.append("title", data.title);
+    fd.append("description", data.description);
+    fd.append("liveUrl", data.liveUrl || "");
+    fd.append("githubUrl", data.githubUrl || "");
+    fd.append("featured", String(data.featured));
+    fd.append("order", data.order || "");
     if (imageFile) fd.append("image", imageFile);
     if (screenshotFiles) {
       Array.from(screenshotFiles).forEach((file) => fd.append("screenshots", file));
     }
     if (editItem) fd.append("_id", editItem._id);
+
+    // Append tech stack data
+    const techStackMeta = validTech.map((t) => ({
+      name: t.name.trim(),
+      existingImage: t.file ? "" : t.image, // only keep existing if no new file
+    }));
+    fd.append("techStack", JSON.stringify(techStackMeta));
+    validTech.forEach((t, i) => {
+      if (t.file) fd.append(`techStackImage_${i}`, t.file);
+    });
 
     const apiCall = editItem
       ? () => updateProject(fd)
@@ -224,23 +259,28 @@ export default function ProjectsSection() {
                   </div>
                   <p className="mt-1 text-sm text-zinc-600 line-clamp-2">{item.description}</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {item.technologies.map((tech, idx) => (
+                    {item.techStack.map((tech, idx) => (
                       <motion.span
                         key={idx}
-                        className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700"
+                        className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700 flex items-center gap-1.5"
                         initial={{ opacity: 0, scale: 0 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: i * 0.08 + idx * 0.04 + 0.2, type: "spring", stiffness: 500, damping: 20 }}
                       >
-                        {tech}
+                        {tech.image && (
+                          <img src={tech.image} alt={tech.name} className="w-3.5 h-3.5 object-contain" />
+                        )}
+                        {tech.name}
                       </motion.span>
                     ))}
                   </div>
-                  <a href={item.liveLink} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm text-blue-600 hover:underline">
-                    Live Demo →
-                  </a>
-                  {item.githubLink && (
-                    <a href={item.githubLink} target="_blank" rel="noopener noreferrer" className="mt-3 ml-4 inline-block text-sm text-zinc-600 hover:underline">
+                  {item.liveUrl && (
+                    <a href={item.liveUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm text-blue-600 hover:underline">
+                      Live Demo →
+                    </a>
+                  )}
+                  {item.githubUrl && (
+                    <a href={item.githubUrl} target="_blank" rel="noopener noreferrer" className="mt-3 ml-4 inline-block text-sm text-zinc-600 hover:underline">
                       GitHub →
                     </a>
                   )}
@@ -259,12 +299,14 @@ export default function ProjectsSection() {
       )}
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editItem ? "Edit Project" : "Add Project"}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Field label="Title" required>
-            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="input-field" required />
+            <input type="text" {...register("title")} className="input-field" />
+            {errors.title && <p className="text-sm text-red-600 mt-1">{errors.title.message}</p>}
           </Field>
           <Field label="Description" required>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="input-field min-h-20 resize-y" required />
+            <textarea {...register("description")} className="input-field min-h-20 resize-y" />
+            {errors.description && <p className="text-sm text-red-600 mt-1">{errors.description.message}</p>}
           </Field>
           <Field label="Image" required={!editItem}>
             {imagePreview && (
@@ -287,14 +329,72 @@ export default function ProjectsSection() {
               required={!editItem}
             />
           </Field>
-          <Field label="Technologies" required>
-            <input type="text" value={technologies} onChange={(e) => setTechnologies(e.target.value)} className="input-field" placeholder="React, Node.js, MongoDB (comma separated)" required />
+          <Field label="Technologies / Tech Stack" required>
+            <div className="space-y-2">
+              {techStackEntries.map((entry, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  {entry.preview && (
+                    <img src={entry.preview} alt="" className="w-8 h-8 rounded border border-zinc-200 object-contain shrink-0" />
+                  )}
+                  <input
+                    type="text"
+                    value={entry.name}
+                    onChange={(e) => {
+                      const updated = [...techStackEntries];
+                      updated[idx] = { ...updated[idx], name: e.target.value };
+                      setTechStackEntries(updated);
+                    }}
+                    placeholder="Tech name"
+                    className="input-field flex-1"
+                  />
+                  <label className="text-xs text-zinc-500 cursor-pointer shrink-0 rounded-md border border-zinc-300 px-2 py-1.5 hover:bg-zinc-50">
+                    {entry.file ? "Change" : entry.image ? "Replace" : "Image"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        const updated = [...techStackEntries];
+                        updated[idx] = {
+                          ...updated[idx],
+                          file,
+                          preview: file ? URL.createObjectURL(file) : updated[idx].preview,
+                        };
+                        setTechStackEntries(updated);
+                      }}
+                    />
+                  </label>
+                  <motion.button
+                    type="button"
+                    onClick={() => setTechStackEntries((prev) => prev.filter((_, i) => i !== idx))}
+                    className="text-red-500 hover:text-red-700 text-lg font-bold shrink-0 cursor-pointer"
+                    whileTap={{ scale: 0.85 }}
+                  >
+                    ×
+                  </motion.button>
+                </div>
+              ))}
+              <motion.button
+                type="button"
+                onClick={() =>
+                  setTechStackEntries((prev) => [...prev, { name: "", image: "", file: null, preview: null }])
+                }
+                className="rounded-md border border-dashed border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 cursor-pointer w-full"
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                + Add Tech
+              </motion.button>
+            </div>
           </Field>
-          <Field label="Live Link" required>
-            <input type="url" value={liveLink} onChange={(e) => setLiveLink(e.target.value)} className="input-field" placeholder="https://..." required />
+          <Field label="Live URL">
+            <input type="url" {...register("liveUrl")} className="input-field" placeholder="https://..." />
+            {errors.liveUrl && <p className="text-sm text-red-600 mt-1">{errors.liveUrl.message}</p>}
           </Field>
-          <Field label="GitHub Link">
-            <input type="url" value={githubLink} onChange={(e) => setGithubLink(e.target.value)} className="input-field" placeholder="https://github.com/..." />
+          <Field label="GitHub URL">
+            <input type="url" {...register("githubUrl")} className="input-field" placeholder="https://github.com/..." />
+            {errors.githubUrl && <p className="text-sm text-red-600 mt-1">{errors.githubUrl.message}</p>}
           </Field>
           <Field label="Screenshots">
             {editItem?.screenshots && editItem.screenshots.length > 0 && (
@@ -315,11 +415,11 @@ export default function ProjectsSection() {
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex items-center gap-2">
-              <input type="checkbox" id="featured" checked={featured} onChange={(e) => setFeatured(e.target.checked)} className="accent-zinc-800 w-4 h-4 cursor-pointer" />
+              <input type="checkbox" id="featured" {...register("featured")} className="accent-zinc-800 w-4 h-4 cursor-pointer" />
               <label htmlFor="featured" className="text-sm text-zinc-700 cursor-pointer">Featured Project</label>
             </div>
             <Field label="Display Order">
-              <input type="number" value={order} onChange={(e) => setOrder(e.target.value)} className="input-field" placeholder="e.g. 1, 2, 3" />
+              <input type="number" {...register("order")} className="input-field" placeholder="e.g. 1, 2, 3" />
             </Field>
           </div>
           <div className="flex justify-end gap-3 pt-2">

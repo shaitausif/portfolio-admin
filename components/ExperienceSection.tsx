@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useRef, FormEvent } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "react-toastify";
 import { motion, AnimatePresence } from "motion/react";
 import Modal from "./Modal";
@@ -12,6 +14,7 @@ import {
   updateExperience,
   deleteExperience,
 } from "@/helpers/api";
+import { experienceSchema, type ExperienceFormData } from "@/lib/schemas";
 
 interface ExperienceData {
   _id: string;
@@ -43,20 +46,25 @@ export default function ExperienceSection() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<ExperienceData | null>(null);
 
-  // Form state
-  const [jobTitle, setJobTitle] = useState("");
-  const [company, setCompany] = useState("");
-  const [location, setLocation] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [description, setDescription] = useState("");
+  // File state
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [companyLogoFile, setCompanyLogoFile] = useState<File | null>(null);
   const [companyLogoPreview, setCompanyLogoPreview] = useState<string | null>(null);
-  const [technologies, setTechnologies] = useState("");
-  const [isCurrentRole, setIsCurrentRole] = useState(false);
   const mediaRef = useRef<HTMLInputElement>(null);
   const companyLogoRef = useRef<HTMLInputElement>(null);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    setValue,
+    formState: { errors },
+  } = useForm<ExperienceFormData>({
+    resolver: zodResolver(experienceSchema),
+  });
+
+  const isCurrentRole = watch("isCurrentRole");
 
   const fetchData = async () => {
     await requestHandler(
@@ -69,33 +77,33 @@ export default function ExperienceSection() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const resetForm = () => {
-    setJobTitle(""); setCompany(""); setLocation("");
-    setStartDate(""); setEndDate(""); setDescription("");
+  const resetFileState = () => {
     setMediaFile(null); setCompanyLogoFile(null); setCompanyLogoPreview(null);
-    setTechnologies(""); setIsCurrentRole(false);
     if (mediaRef.current) mediaRef.current.value = "";
     if (companyLogoRef.current) companyLogoRef.current.value = "";
   };
 
   const openCreate = () => {
     setEditItem(null);
-    resetForm();
+    reset({ jobTitle: "", company: "", location: "", startDate: "", endDate: "", description: "", technologies: "", isCurrentRole: false });
+    resetFileState();
     setModalOpen(true);
   };
 
   const openEdit = (item: ExperienceData) => {
     setEditItem(item);
-    setJobTitle(item.jobTitle);
-    setCompany(item.company);
-    setLocation(item.location);
-    setStartDate(item.startDate?.slice(0, 10) || "");
-    setEndDate(item.endDate?.slice(0, 10) || "");
-    setDescription(Array.isArray(item.description) ? item.description.join("\n") : item.description || "");
+    reset({
+      jobTitle: item.jobTitle,
+      company: item.company,
+      location: item.location,
+      startDate: item.startDate?.slice(0, 10) || "",
+      endDate: item.endDate?.slice(0, 10) || "",
+      description: Array.isArray(item.description) ? item.description.join("\n") : item.description || "",
+      technologies: item.technologies?.join(", ") || "",
+      isCurrentRole: item.isCurrentRole || false,
+    });
     setCompanyLogoFile(null);
     setCompanyLogoPreview(item.companyLogo || null);
-    setTechnologies(item.technologies?.join(", ") || "");
-    setIsCurrentRole(item.isCurrentRole || false);
     setMediaFile(null);
     if (mediaRef.current) mediaRef.current.value = "";
     if (companyLogoRef.current) companyLogoRef.current.value = "";
@@ -115,29 +123,22 @@ export default function ExperienceSection() {
     );
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-
-    const bullets = description.split("\n").map((s) => s.trim()).filter(Boolean);
-    if (bullets.length === 0) {
-      toast.error("Add at least one description bullet point");
-      return;
-    }
+  const onSubmit = async (data: ExperienceFormData) => {
+    const bullets = data.description.split("\n").map((s) => s.trim()).filter(Boolean);
+    const techArray = (data.technologies || "").split(",").map((t) => t.trim()).filter(Boolean);
 
     const fd = new FormData();
-    fd.append("jobTitle", jobTitle);
-    fd.append("company", company);
-    fd.append("location", location);
-    fd.append("startDate", startDate);
-    if (endDate) fd.append("endDate", endDate);
+    fd.append("jobTitle", data.jobTitle);
+    fd.append("company", data.company);
+    fd.append("location", data.location);
+    fd.append("startDate", data.startDate);
+    fd.append("endDate", data.endDate || "");
     fd.append("description", JSON.stringify(bullets));
-    fd.append("isCurrentRole", String(isCurrentRole));
+    fd.append("technologies", JSON.stringify(techArray));
+    fd.append("isCurrentRole", String(data.isCurrentRole));
     if (mediaFile) fd.append("media", mediaFile);
     if (companyLogoFile) fd.append("companyLogo", companyLogoFile);
     if (editItem) fd.append("_id", editItem._id);
-
-    const techArray = technologies.split(",").map((t) => t.trim()).filter(Boolean);
-    if (techArray.length > 0) fd.append("technologies", JSON.stringify(techArray));
 
     const apiCall = editItem
       ? () => updateExperience(fd)
@@ -249,12 +250,14 @@ export default function ExperienceSection() {
       )}
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editItem ? "Edit Experience" : "Add Experience"}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Field label="Job Title" required>
-            <input type="text" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} className="input-field" required />
+            <input type="text" {...register("jobTitle")} className="input-field" />
+            {errors.jobTitle && <p className="text-sm text-red-600 mt-1">{errors.jobTitle.message}</p>}
           </Field>
           <Field label="Company" required>
-            <input type="text" value={company} onChange={(e) => setCompany(e.target.value)} className="input-field" required />
+            <input type="text" {...register("company")} className="input-field" />
+            {errors.company && <p className="text-sm text-red-600 mt-1">{errors.company.message}</p>}
           </Field>
           <Field label="Company Logo">
             {companyLogoPreview && (
@@ -273,25 +276,37 @@ export default function ExperienceSection() {
             />
           </Field>
           <Field label="Location" required>
-            <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} className="input-field" required />
+            <input type="text" {...register("location")} className="input-field" />
+            {errors.location && <p className="text-sm text-red-600 mt-1">{errors.location.message}</p>}
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Start Date" required>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input-field" required />
+              <input type="date" {...register("startDate")} className="input-field" />
+              {errors.startDate && <p className="text-sm text-red-600 mt-1">{errors.startDate.message}</p>}
             </Field>
             <Field label="End Date">
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input-field" disabled={isCurrentRole} />
+              <input type="date" {...register("endDate")} className="input-field" disabled={isCurrentRole} />
             </Field>
           </div>
           <div className="flex items-center gap-2">
-            <input type="checkbox" id="isCurrentRole" checked={isCurrentRole} onChange={(e) => { setIsCurrentRole(e.target.checked); if (e.target.checked) setEndDate(""); }} className="accent-zinc-800 w-4 h-4 cursor-pointer" />
+            <input
+              type="checkbox"
+              id="isCurrentRole"
+              {...register("isCurrentRole", {
+                onChange: (e) => {
+                  if (e.target.checked) setValue("endDate", "");
+                },
+              })}
+              className="accent-zinc-800 w-4 h-4 cursor-pointer"
+            />
             <label htmlFor="isCurrentRole" className="text-sm text-zinc-700 cursor-pointer">I currently work here</label>
           </div>
           <Field label="Description (one bullet per line)" required>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="input-field min-h-24 resize-y" placeholder={"Developed REST APIs\nLed a team of 5 engineers\nImproved performance by 40%"} required />
+            <textarea {...register("description")} className="input-field min-h-24 resize-y" placeholder={"Developed REST APIs\nLed a team of 5 engineers\nImproved performance by 40%"} />
+            {errors.description && <p className="text-sm text-red-600 mt-1">{errors.description.message}</p>}
           </Field>
           <Field label="Technologies">
-            <input type="text" value={technologies} onChange={(e) => setTechnologies(e.target.value)} className="input-field" placeholder="React, Node.js, MongoDB (comma separated)" />
+            <input type="text" {...register("technologies")} className="input-field" placeholder="React, Node.js, MongoDB (comma separated)" />
           </Field>
           <Field label="Media">
             {editItem?.media && (

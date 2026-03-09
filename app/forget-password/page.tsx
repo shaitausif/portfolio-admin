@@ -1,33 +1,39 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import axios from "axios";
 import { requestHandler } from "@/app/src/utils";
 import { toast } from "react-toastify";
+import { forgetPasswordSchema, type ForgetPasswordFormData } from "@/lib/schemas";
 
 export default function ForgetPasswordPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError("");
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<ForgetPasswordFormData>({
+    resolver: zodResolver(forgetPasswordSchema),
+  });
+
+  const onSubmit = async (data: ForgetPasswordFormData) => {
     setSuccessMessage("");
 
     await requestHandler(
-      () => axios.get(`/src/api/forget-password/${encodeURIComponent(email)}`),
+      () => axios.get(`/src/api/forget-password/${encodeURIComponent(data.email)}`),
       setLoading,
-      (data) => {
-        const msg = data.message || "OTP sent to your email.";
+      (res) => {
+        const msg = res.message || "OTP sent to your email.";
         setSuccessMessage(msg);
         toast.success(msg);
       },
       (err) => {
-        setError(err);
         toast.error(err);
       }
     );
@@ -39,20 +45,18 @@ export default function ForgetPasswordPage() {
         <h1 className="text-2xl font-semibold text-zinc-900">Forgot Password</h1>
         <p className="mt-1 text-sm text-zinc-600">Enter your email to receive OTP</p>
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
           <div>
             <label className="block text-sm font-medium text-zinc-800">Email</label>
             <input
               type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              {...register("email")}
               className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
               placeholder="you@example.com"
-              required
             />
+            {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email.message}</p>}
           </div>
 
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
           {successMessage ? <p className="text-sm text-green-700">{successMessage}</p> : null}
 
           <button

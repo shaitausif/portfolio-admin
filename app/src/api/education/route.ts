@@ -115,11 +115,11 @@ export async function PUT(req: NextRequest) {
     }
 
     const updateData: Record<string, any> = {};
-    if (institution?.trim()) updateData.institution = institution.trim();
-    if (degree?.trim()) updateData.degree = degree.trim();
-    if (fieldOfStudy?.trim()) updateData.fieldOfStudy = fieldOfStudy.trim();
-    if (startDate) updateData.startDate = startDate;
-    if (endDate !== undefined) updateData.endDate = endDate || null;
+    if (institution !== null) updateData.institution = institution?.trim() || "";
+    if (degree !== null) updateData.degree = degree?.trim() || "";
+    if (fieldOfStudy !== null) updateData.fieldOfStudy = fieldOfStudy?.trim() || "";
+    if (startDate !== null) updateData.startDate = startDate;
+    if (endDate !== null) updateData.endDate = endDate || null;
     if (grade !== null) updateData.grade = grade?.trim() || "";
     if (description !== null) updateData.description = description?.trim() || "";
 

@@ -1,32 +1,39 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import axios from "axios";
 import { requestHandler } from "@/app/src/utils";
 import { toast } from "react-toastify";
+import {
+  signupSchema,
+  verifyOtpSchema,
+  type SignupFormData,
+  type VerifyOtpFormData,
+} from "@/lib/schemas";
 
 export default function SignupPage() {
   const router = useRouter();
-
-  // Form state
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
-
-  // Step: "signup" → "verify"
   const [step, setStep] = useState<"signup" | "verify">("signup");
 
-  // ─── Step 1: Create account & send OTP ───
-  const handleSignup = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const signupForm = useForm<SignupFormData>({
+    resolver: zodResolver(signupSchema),
+  });
 
+  const verifyForm = useForm<VerifyOtpFormData>({
+    resolver: zodResolver(verifyOtpSchema),
+  });
+
+  // ─── Step 1: Create account & send OTP ───
+  const handleSignup = async (data: SignupFormData) => {
     await requestHandler(
-      () => axios.post("/src/api/signup", { email, password }),
+      () => axios.post("/src/api/signup", data),
       setLoading,
-      (data) => {
-        toast.success(data.message);
+      (res) => {
+        toast.success(res.message);
         setStep("verify");
       },
       (err) => toast.error(err)
@@ -34,14 +41,13 @@ export default function SignupPage() {
   };
 
   // ─── Step 2: Verify OTP ───
-  const handleVerify = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
+  const handleVerify = async (data: VerifyOtpFormData) => {
+    const email = signupForm.getValues("email");
     await requestHandler(
-      () => axios.post("/src/api/verify-code", { email, otp }),
+      () => axios.post("/src/api/verify-code", { email, otp: data.otp }),
       setLoading,
-      (data) => {
-        toast.success(data.message);
+      (res) => {
+        toast.success(res.message);
         router.push("/login");
       },
       (err) => toast.error(err)
@@ -50,10 +56,11 @@ export default function SignupPage() {
 
   // ─── Resend OTP (re-submits signup which resends for unverified users) ───
   const handleResend = async () => {
+    const { email, password } = signupForm.getValues();
     await requestHandler(
       () => axios.post("/src/api/signup", { email, password }),
       setLoading,
-      (data) => toast.success("OTP resent to your email"),
+      () => toast.success("OTP resent to your email"),
       (err) => toast.error(err)
     );
   };
@@ -68,19 +75,20 @@ export default function SignupPage() {
               Create your account — you&#39;ll verify via email OTP
             </p>
 
-            <form onSubmit={handleSignup} className="mt-6 space-y-4">
+            <form onSubmit={signupForm.handleSubmit(handleSignup)} className="mt-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-zinc-800">
                   Email
                 </label>
                 <input
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  {...signupForm.register("email")}
                   className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-black outline-none focus:border-zinc-500"
                   placeholder="you@example.com"
-                  required
                 />
+                {signupForm.formState.errors.email && (
+                  <p className="text-sm text-red-600 mt-1">{signupForm.formState.errors.email.message}</p>
+                )}
               </div>
 
               <div>
@@ -89,13 +97,13 @@ export default function SignupPage() {
                 </label>
                 <input
                   type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  {...signupForm.register("password")}
                   className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-black outline-none focus:border-zinc-500"
                   placeholder="••••••••"
-                  required
-                  minLength={6}
                 />
+                {signupForm.formState.errors.password && (
+                  <p className="text-sm text-red-600 mt-1">{signupForm.formState.errors.password.message}</p>
+                )}
               </div>
 
               <button
@@ -121,10 +129,10 @@ export default function SignupPage() {
             <h1 className="text-2xl font-semibold text-zinc-900">Verify Email</h1>
             <p className="mt-1 text-sm text-zinc-600">
               Enter the 6-digit OTP sent to{" "}
-              <span className="font-medium text-zinc-900">{email}</span>
+              <span className="font-medium text-zinc-900">{signupForm.getValues("email")}</span>
             </p>
 
-            <form onSubmit={handleVerify} className="mt-6 space-y-4">
+            <form onSubmit={verifyForm.handleSubmit(handleVerify)} className="mt-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-zinc-800">
                   OTP Code
@@ -133,19 +141,22 @@ export default function SignupPage() {
                   type="text"
                   inputMode="numeric"
                   maxLength={6}
-                  value={otp}
-                  onChange={(e) =>
-                    setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                  }
+                  {...verifyForm.register("otp", {
+                    onChange: (e) => {
+                      e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
+                    },
+                  })}
                   className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-center text-xl tracking-[0.5em] text-black outline-none focus:border-zinc-500"
                   placeholder="------"
-                  required
                 />
+                {verifyForm.formState.errors.otp && (
+                  <p className="text-sm text-red-600 mt-1">{verifyForm.formState.errors.otp.message}</p>
+                )}
               </div>
 
               <button
                 type="submit"
-                disabled={loading || otp.length < 6}
+                disabled={loading}
                 className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
               >
                 {loading ? "Verifying..." : "Verify OTP"}

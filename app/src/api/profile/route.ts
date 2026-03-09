@@ -10,13 +10,16 @@ import {
 import { ApiError, handleApiError } from "../../utils/ApiError";
 import { ApiResponse } from "../../utils/ApiResponse";
 
+
 // GET — Fetch the authenticated user's profile (populated)
 export async function GET(req: NextRequest) {
   try {
+    
     const user = getAuthUser(req);
     if (!user) throw new ApiError(401, "Unauthorized");
 
     await ConnectDB();
+    
 
     const profile = await Profile.findOne({ userId: user._id })
       .populate("skills")
@@ -24,6 +27,7 @@ export async function GET(req: NextRequest) {
       .populate("experience")
       .populate("education");
 
+     
     if (!profile) throw new ApiError(404, "Profile not found");
 
     return NextResponse.json(
@@ -142,14 +146,14 @@ export async function PUT(req: NextRequest) {
     if (!existingProfile) throw new ApiError(404, "Profile not found");
 
     const updateData: Record<string, any> = {};
-    if (name?.trim()) updateData.name = name.trim();
-    if (role?.trim()) updateData.role = role.trim();
-    if (bio?.trim()) updateData.bio = bio.trim();
+    if (name !== null) updateData.name = name?.trim() || existingProfile.name;
+    if (role !== null) updateData.role = role?.trim() || existingProfile.role;
+    if (bio !== null) updateData.bio = bio?.trim() || existingProfile.bio;
     if (typewriterStrings) updateData.typewriterStrings = JSON.parse(typewriterStrings);
-    if (email?.trim()) updateData.email = email.trim();
+    if (email !== null) updateData.email = email?.trim() || existingProfile.email;
     if (phone !== null) updateData.phone = phone?.trim() || "";
     if (address !== null) updateData.address = address?.trim() || "";
-    if (socialLinks) updateData.socialLinks = JSON.parse(socialLinks);
+    if (socialLinks !== null) updateData.socialLinks = socialLinks ? JSON.parse(socialLinks) : {};
 
     if (photoFile && photoFile.size > 0) {
       if (existingProfile.photo) await deleteFromCloudinary(existingProfile.photo);

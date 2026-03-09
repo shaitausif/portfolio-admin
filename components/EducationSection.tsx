@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useRef, FormEvent } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "react-toastify";
 import { motion, AnimatePresence } from "motion/react";
 import Modal from "./Modal";
@@ -12,6 +14,7 @@ import {
   updateEducation,
   deleteEducation,
 } from "@/helpers/api";
+import { educationSchema, type EducationFormData } from "@/lib/schemas";
 
 interface EducationData {
   _id: string;
@@ -41,17 +44,19 @@ export default function EducationSection() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<EducationData | null>(null);
 
-  // Form state
-  const [institution, setInstitution] = useState("");
-  const [degree, setDegree] = useState("");
-  const [fieldOfStudy, setFieldOfStudy] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [description, setDescription] = useState("");
+  // File state
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [grade, setGrade] = useState("");
   const logoRef = useRef<HTMLInputElement>(null);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<EducationFormData>({
+    resolver: zodResolver(educationSchema),
+  });
 
   const fetchData = async () => {
     await requestHandler(
@@ -64,30 +69,31 @@ export default function EducationSection() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const resetForm = () => {
-    setInstitution(""); setDegree(""); setFieldOfStudy("");
-    setStartDate(""); setEndDate(""); setDescription("");
-    setLogoFile(null); setLogoPreview(null); setGrade("");
+  const resetFileState = () => {
+    setLogoFile(null); setLogoPreview(null);
     if (logoRef.current) logoRef.current.value = "";
   };
 
   const openCreate = () => {
     setEditItem(null);
-    resetForm();
+    reset({ institution: "", degree: "", fieldOfStudy: "", startDate: "", endDate: "", description: "", grade: "" });
+    resetFileState();
     setModalOpen(true);
   };
 
   const openEdit = (item: EducationData) => {
     setEditItem(item);
-    setInstitution(item.institution);
-    setDegree(item.degree);
-    setFieldOfStudy(item.fieldOfStudy);
-    setStartDate(item.startDate?.slice(0, 10) || "");
-    setEndDate(item.endDate?.slice(0, 10) || "");
-    setDescription(item.description || "");
+    reset({
+      institution: item.institution,
+      degree: item.degree,
+      fieldOfStudy: item.fieldOfStudy,
+      startDate: item.startDate?.slice(0, 10) || "",
+      endDate: item.endDate?.slice(0, 10) || "",
+      description: item.description || "",
+      grade: item.grade || "",
+    });
     setLogoFile(null);
     setLogoPreview(item.institutionLogo || null);
-    setGrade(item.grade || "");
     if (logoRef.current) logoRef.current.value = "";
     setModalOpen(true);
   };
@@ -105,16 +111,15 @@ export default function EducationSection() {
     );
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: EducationFormData) => {
     const fd = new FormData();
-    fd.append("institution", institution);
-    fd.append("degree", degree);
-    fd.append("fieldOfStudy", fieldOfStudy);
-    fd.append("startDate", startDate);
-    if (endDate) fd.append("endDate", endDate);
-    if (description) fd.append("description", description);
-    if (grade) fd.append("grade", grade);
+    fd.append("institution", data.institution);
+    fd.append("degree", data.degree);
+    fd.append("fieldOfStudy", data.fieldOfStudy);
+    fd.append("startDate", data.startDate);
+    fd.append("endDate", data.endDate || "");
+    fd.append("description", data.description || "");
+    fd.append("grade", data.grade || "");
     if (logoFile) fd.append("institutionLogo", logoFile);
     if (editItem) fd.append("_id", editItem._id);
 
@@ -211,9 +216,10 @@ export default function EducationSection() {
       )}
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editItem ? "Edit Education" : "Add Education"}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Field label="Institution" required>
-            <input type="text" value={institution} onChange={(e) => setInstitution(e.target.value)} className="input-field" required />
+            <input type="text" {...register("institution")} className="input-field" />
+            {errors.institution && <p className="text-sm text-red-600 mt-1">{errors.institution.message}</p>}
           </Field>
           <Field label="Institution Logo">
             {logoPreview && (
@@ -232,24 +238,27 @@ export default function EducationSection() {
             />
           </Field>
           <Field label="Degree" required>
-            <input type="text" value={degree} onChange={(e) => setDegree(e.target.value)} className="input-field" required />
+            <input type="text" {...register("degree")} className="input-field" />
+            {errors.degree && <p className="text-sm text-red-600 mt-1">{errors.degree.message}</p>}
           </Field>
           <Field label="Field of Study" required>
-            <input type="text" value={fieldOfStudy} onChange={(e) => setFieldOfStudy(e.target.value)} className="input-field" required />
+            <input type="text" {...register("fieldOfStudy")} className="input-field" />
+            {errors.fieldOfStudy && <p className="text-sm text-red-600 mt-1">{errors.fieldOfStudy.message}</p>}
           </Field>
           <Field label="Grade">
-            <input type="text" value={grade} onChange={(e) => setGrade(e.target.value)} className="input-field" placeholder="e.g. 3.8 GPA, First Class Honours" />
+            <input type="text" {...register("grade")} className="input-field" placeholder="e.g. 3.8 GPA, First Class Honours" />
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Start Date" required>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input-field" required />
+              <input type="date" {...register("startDate")} className="input-field" />
+              {errors.startDate && <p className="text-sm text-red-600 mt-1">{errors.startDate.message}</p>}
             </Field>
             <Field label="End Date">
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input-field" />
+              <input type="date" {...register("endDate")} className="input-field" />
             </Field>
           </div>
           <Field label="Description">
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="input-field min-h-20 resize-y" />
+            <textarea {...register("description")} className="input-field min-h-20 resize-y" />
           </Field>
           <div className="flex justify-end gap-3 pt-2">
             <motion.button type="button" onClick={() => setModalOpen(false)} className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 cursor-pointer" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>Cancel</motion.button>

@@ -112,7 +112,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const updateData: Record<string, any> = {};
-    if (name?.trim()) updateData.name = name.trim();
+    if (name !== null) updateData.name = name?.trim() || "";
     if (level !== null && level !== "") {
       const parsedLevel = Number(level);
       if (isNaN(parsedLevel) || parsedLevel < 0 || parsedLevel > 100) {

@@ -27,7 +27,7 @@ export async function saveFormDataFile(file: File): Promise<string> {
  * Upload a local file to Cloudinary.
  * Deletes the local file after upload (success or failure).
  */
-const uploadOnCloudinary = async (localFilePath: string) => {
+const uploadOnCloudinary = async (localFilePath: string, resource = null) => {
   try {
     if (!localFilePath) return null;
 

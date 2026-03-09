@@ -1,35 +1,34 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import axios from "axios";
 import { requestHandler } from "@/app/src/utils";
 import { toast } from "react-toastify";
+import { loginSchema, type LoginFormData } from "@/lib/schemas";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
-  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError("");
-    console.log("Hoye")
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+  });
+
+  const onSubmit = async (data: LoginFormData) => {
     await requestHandler(
-      () =>
-        axios.post("/src/api/login", {
-          email,
-          password,
-        }),
+      () => axios.post("/src/api/login", data),
       setLoading,
-      (res) => {
-        console.log(res)
+      () => {
         router.push("/");
       },
       (err) => {
-        setError(err);
         toast.error(err);
       }
     );
@@ -41,32 +40,28 @@ export default function LoginPage() {
         <h1 className="text-2xl font-semibold text-zinc-900">Login</h1>
         <p className="mt-1 text-sm text-zinc-600">Admin access only</p>
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
           <div>
             <label className="block text-sm font-medium text-zinc-800">Email</label>
             <input
               type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              {...register("email")}
               className="mt-1 text-black w-full rounded-md border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500"
               placeholder="you@example.com"
-              required
             />
+            {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email.message}</p>}
           </div>
 
           <div>
             <label className="block text-sm font-medium text-zinc-800">Password</label>
             <input
               type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              {...register("password")}
               className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 outline-none focus:border-zinc-500 text-black"
               placeholder="••••••••"
-              required
             />
+            {errors.password && <p className="text-sm text-red-600 mt-1">{errors.password.message}</p>}
           </div>
-
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
           <button
             type="submit"

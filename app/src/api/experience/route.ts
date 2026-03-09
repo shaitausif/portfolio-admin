@@ -133,13 +133,13 @@ export async function PUT(req: NextRequest) {
     }
 
     const updateData: Record<string, any> = {};
-    if (jobTitle?.trim()) updateData.jobTitle = jobTitle.trim();
-    if (company?.trim()) updateData.company = company.trim();
-    if (location?.trim()) updateData.location = location.trim();
-    if (startDate) updateData.startDate = startDate;
-    if (endDate !== undefined) updateData.endDate = endDate || null;
-    if (description) updateData.description = JSON.parse(description);
-    if (technologies) updateData.technologies = JSON.parse(technologies);
+    if (jobTitle !== null) updateData.jobTitle = jobTitle?.trim() || "";
+    if (company !== null) updateData.company = company?.trim() || "";
+    if (location !== null) updateData.location = location?.trim() || "";
+    if (startDate !== null) updateData.startDate = startDate;
+    if (endDate !== null) updateData.endDate = endDate || null;
+    if (description !== null) updateData.description = description ? JSON.parse(description) : [];
+    if (technologies !== null) updateData.technologies = technologies ? JSON.parse(technologies) : [];
     if (isCurrentRole !== null) updateData.isCurrentRole = isCurrentRole === "true";
 
     if (companyLogoFile && companyLogoFile.size > 0) {

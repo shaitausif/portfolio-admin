@@ -31,6 +31,49 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// Helper: upload tech stack images and build techStack array
+async function buildTechStack(
+  formData: FormData,
+  existingTechStack?: { name: string; image: string }[]
+) {
+  const techStackJson = formData.get("techStack") as string | null;
+  if (!techStackJson) return [];
+
+  const techItems: { name: string; existingImage?: string }[] = JSON.parse(techStackJson);
+  const techStack: { name: string; image: string }[] = [];
+
+  for (let i = 0; i < techItems.length; i++) {
+    const file = formData.get(`techStackImage_${i}`) as File | null;
+    let imageUrl = techItems[i].existingImage || "";
+
+    if (file && file.size > 0) {
+      // Delete old image if replacing
+      if (imageUrl) await deleteFromCloudinary(imageUrl);
+      const tmpPath = await saveFormDataFile(file);
+      const res = await uploadOnCloudinary(tmpPath);
+      imageUrl = res?.secure_url || "";
+    }
+
+    if (!imageUrl) {
+      throw new ApiError(400, `Image is required for tech: ${techItems[i].name}`);
+    }
+
+    techStack.push({ name: techItems[i].name, image: imageUrl });
+  }
+
+  // Clean up images of removed tech items
+  if (existingTechStack) {
+    const newImages = new Set(techStack.map((t) => t.image));
+    for (const old of existingTechStack) {
+      if (old.image && !newImages.has(old.image)) {
+        await deleteFromCloudinary(old.image);
+      }
+    }
+  }
+
+  return techStack;
+}
+
 // POST — Create a new project and link it to the user's profile
 export async function POST(req: NextRequest) {
   try {
@@ -42,23 +85,22 @@ export async function POST(req: NextRequest) {
     const description = formData.get("description") as string | null;
     const imageFile = formData.get("image") as File | null;
     const screenshotFiles = formData.getAll("screenshots") as File[];
-    const technologies = formData.get("technologies") as string | null;
-    const liveLink = formData.get("liveLink") as string | null;
-    const githubLink = formData.get("githubLink") as string | null;
+    const liveUrl = formData.get("liveUrl") as string | null;
+    const githubUrl = formData.get("githubUrl") as string | null;
     const featured = formData.get("featured") as string | null;
     const order = formData.get("order") as string | null;
 
-    if (!title?.trim() || !description?.trim() || !liveLink?.trim()) {
-      throw new ApiError(400, "Title, description, and live link are required");
+    if (!title?.trim() || !description?.trim()) {
+      throw new ApiError(400, "Title and description are required");
     }
 
     if (!imageFile || imageFile.size === 0) {
       throw new ApiError(400, "Project image is required");
     }
 
-    const techArray = technologies ? JSON.parse(technologies) : [];
-    if (!techArray.length) {
-      throw new ApiError(400, "At least one technology is required");
+    const techStack = await buildTechStack(formData);
+    if (!techStack.length) {
+      throw new ApiError(400, "At least one tech stack item is required");
     }
 
     await ConnectDB();
@@ -85,9 +127,9 @@ export async function POST(req: NextRequest) {
       description: description.trim(),
       imageUrl,
       screenshots: screenshotUrls,
-      technologies: techArray,
-      liveLink: liveLink.trim(),
-      githubLink: githubLink?.trim() || "",
+      techStack,
+      liveUrl: liveUrl?.trim() || "",
+      githubUrl: githubUrl?.trim() || "",
       featured: featured === "true",
       order: order ? Number(order) : undefined,
     });
@@ -117,9 +159,8 @@ export async function PUT(req: NextRequest) {
     const description = formData.get("description") as string | null;
     const imageFile = formData.get("image") as File | null;
     const screenshotFiles = formData.getAll("screenshots") as File[];
-    const technologies = formData.get("technologies") as string | null;
-    const liveLink = formData.get("liveLink") as string | null;
-    const githubLink = formData.get("githubLink") as string | null;
+    const liveUrl = formData.get("liveUrl") as string | null;
+    const githubUrl = formData.get("githubUrl") as string | null;
     const featured = formData.get("featured") as string | null;
     const order = formData.get("order") as string | null;
 
@@ -133,18 +174,28 @@ export async function PUT(req: NextRequest) {
       throw new ApiError(404, "Project not found in your profile");
     }
 
+    const existingProject = await Project.findById(_id);
+    if (!existingProject) throw new ApiError(404, "Project not found");
+
     const updateData: Record<string, any> = {};
-    if (title?.trim()) updateData.title = title.trim();
-    if (description?.trim()) updateData.description = description.trim();
-    if (technologies) updateData.technologies = JSON.parse(technologies);
-    if (liveLink?.trim()) updateData.liveLink = liveLink.trim();
-    if (githubLink !== null) updateData.githubLink = githubLink?.trim() || "";
+    if (title !== null) updateData.title = title?.trim() || "";
+    if (description !== null) updateData.description = description?.trim() || "";
+    if (liveUrl !== null) updateData.liveUrl = liveUrl?.trim() || "";
+    if (githubUrl !== null) updateData.githubUrl = githubUrl?.trim() || "";
     if (featured !== null) updateData.featured = featured === "true";
     if (order !== null) updateData.order = order ? Number(order) : undefined;
 
+    // Handle techStack updates
+    const techStackJson = formData.get("techStack") as string | null;
+    if (techStackJson !== null) {
+      updateData.techStack = await buildTechStack(
+        formData,
+        existingProject.techStack as { name: string; image: string }[]
+      );
+    }
+
     if (imageFile && imageFile.size > 0) {
-      const existingProject = await Project.findById(_id);
-      if (existingProject?.imageUrl) await deleteFromCloudinary(existingProject.imageUrl);
+      if (existingProject.imageUrl) await deleteFromCloudinary(existingProject.imageUrl);
       const tempPath = await saveFormDataFile(imageFile);
       const result = await uploadOnCloudinary(tempPath);
       if (result?.secure_url) updateData.imageUrl = result.secure_url;
@@ -152,9 +203,7 @@ export async function PUT(req: NextRequest) {
 
     // Handle new screenshots upload
     if (screenshotFiles.length > 0 && screenshotFiles[0]?.size > 0) {
-      // Clean up old screenshots
-      const existingProject = await Project.findById(_id);
-      if (existingProject?.screenshots) {
+      if (existingProject.screenshots) {
         for (const url of existingProject.screenshots) {
           await deleteFromCloudinary(url);
         }
@@ -206,6 +255,11 @@ export async function DELETE(req: NextRequest) {
 
     // Clean up Cloudinary assets
     if (project.imageUrl) await deleteFromCloudinary(project.imageUrl);
+    if (project.techStack) {
+      for (const tech of project.techStack) {
+        if (tech.image) await deleteFromCloudinary(tech.image);
+      }
+    }
     if (project.screenshots) {
       for (const url of project.screenshots) {
         await deleteFromCloudinary(url);

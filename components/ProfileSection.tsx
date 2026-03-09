@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useRef, FormEvent } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "react-toastify";
 import { motion } from "motion/react";
 import Modal from "./Modal";
@@ -9,7 +11,9 @@ import {
   getProfile,
   createProfile,
   updateProfile,
+  deleteProfile,
 } from "@/helpers/api";
+import { profileSchema, type ProfileFormData } from "@/lib/schemas";
 
 interface SocialLinks {
   github?: string;
@@ -40,39 +44,31 @@ export default function ProfileSection() {
   const [modalOpen, setModalOpen] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
 
-  // Form state
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("");
-  const [bio, setBio] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [typewriterStrings, setTypewriterStrings] = useState("");
+  // File state (not managed by react-hook-form)
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [heroImageFile, setHeroImageFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [heroImagePreview, setHeroImagePreview] = useState<string | null>(null);
-  const [github, setGithub] = useState("");
-  const [linkedin, setLinkedin] = useState("");
-  const [twitter, setTwitter] = useState("");
-  const [instagram, setInstagram] = useState("");
-  const [youtube, setYoutube] = useState("");
   const photoRef = useRef<HTMLInputElement>(null);
   const resumeRef = useRef<HTMLInputElement>(null);
   const heroImageRef = useRef<HTMLInputElement>(null);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<ProfileFormData>({
+    resolver: zodResolver(profileSchema),
+  });
 
   const fetchProfile = async () => {
     await requestHandler(
       getProfile,
       setLoading,
-      (res) => {
-        setProfile(res.data);
-      },
-      () => {
-        // Profile not found is fine — user hasn't created one yet
-        setProfile(null);
-      }
+      (res) => setProfile(res.data),
+      () => setProfile(null)
     );
   };
 
@@ -80,74 +76,83 @@ export default function ProfileSection() {
     fetchProfile();
   }, []);
 
-  const openCreate = () => {
-    setIsEdit(false);
-    setName(""); setRole(""); setBio(""); setEmail(""); setPhone(""); setAddress("");
-    setTypewriterStrings(""); setPhotoFile(null); setResumeFile(null); setHeroImageFile(null);
+  const resetFileState = () => {
+    setPhotoFile(null); setResumeFile(null); setHeroImageFile(null);
     setPhotoPreview(null); setHeroImagePreview(null);
-    setGithub(""); setLinkedin(""); setTwitter(""); setInstagram(""); setYoutube("");
     if (photoRef.current) photoRef.current.value = "";
     if (resumeRef.current) resumeRef.current.value = "";
     if (heroImageRef.current) heroImageRef.current.value = "";
+  };
+
+  const openCreate = () => {
+    setIsEdit(false);
+    reset({ name: "", role: "", bio: "", email: "", phone: "", address: "", typewriterStrings: "", github: "", linkedin: "", twitter: "", instagram: "", youtube: "" });
+    resetFileState();
     setModalOpen(true);
   };
 
   const openEdit = () => {
     if (!profile) return;
     setIsEdit(true);
-    setName(profile.name);
-    setRole(profile.role || "");
-    setBio(profile.bio);
-    setEmail(profile.email || "");
-    setPhone(profile.phone || "");
-    setAddress(profile.address || "");
-    setTypewriterStrings(profile.typewriterStrings?.join("\n") || "");
-    setPhotoFile(null);
-    setResumeFile(null);
-    setHeroImageFile(null);
+    reset({
+      name: profile.name,
+      role: profile.role || "",
+      bio: profile.bio,
+      email: profile.email || "",
+      phone: profile.phone || "",
+      address: profile.address || "",
+      typewriterStrings: profile.typewriterStrings?.join("\n") || "",
+      github: profile.socialLinks?.github || "",
+      linkedin: profile.socialLinks?.linkedin || "",
+      twitter: profile.socialLinks?.twitter || "",
+      instagram: profile.socialLinks?.instagram || "",
+      youtube: profile.socialLinks?.youtube || "",
+    });
+    resetFileState();
     setPhotoPreview(profile.photo || null);
     setHeroImagePreview(profile.heroImage || null);
-    setGithub(profile.socialLinks?.github || "");
-    setLinkedin(profile.socialLinks?.linkedin || "");
-    setTwitter(profile.socialLinks?.twitter || "");
-    setInstagram(profile.socialLinks?.instagram || "");
-    setYoutube(profile.socialLinks?.youtube || "");
-    if (photoRef.current) photoRef.current.value = "";
-    if (resumeRef.current) resumeRef.current.value = "";
-    if (heroImageRef.current) heroImageRef.current.value = "";
     setModalOpen(true);
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleDeleteProfile = async () => {
+    if (!confirm("Are you sure you want to delete your entire profile? This cannot be undone.")) return;
+    await requestHandler(
+      deleteProfile,
+      null,
+      (res) => {
+        toast.success(res.message);
+        setProfile(null);
+      },
+      (err) => toast.error(err)
+    );
+  };
 
-    const twStrings = typewriterStrings.split("\n").map((s) => s.trim()).filter(Boolean);
+  const onSubmit = async (data: ProfileFormData) => {
+    const twStrings = data.typewriterStrings.split("\n").map((s) => s.trim()).filter(Boolean);
     if (twStrings.length === 0) {
       toast.error("Add at least one typewriter string");
       return;
     }
 
     const fd = new FormData();
-    fd.append("name", name);
-    fd.append("role", role);
-    fd.append("bio", bio);
-    fd.append("email", email);
-    if (phone) fd.append("phone", phone);
-    if (address) fd.append("address", address);
+    fd.append("name", data.name);
+    fd.append("role", data.role);
+    fd.append("bio", data.bio);
+    fd.append("email", data.email);
+    fd.append("phone", data.phone || "");
+    fd.append("address", data.address || "");
     fd.append("typewriterStrings", JSON.stringify(twStrings));
     if (photoFile) fd.append("photo", photoFile);
     if (resumeFile) fd.append("resume", resumeFile);
     if (heroImageFile) fd.append("heroImage", heroImageFile);
 
-    const socialLinks: SocialLinks = {};
-    if (github) socialLinks.github = github;
-    if (linkedin) socialLinks.linkedin = linkedin;
-    if (twitter) socialLinks.twitter = twitter;
-    if (instagram) socialLinks.instagram = instagram;
-    if (youtube) socialLinks.youtube = youtube;
-    if (Object.keys(socialLinks).length > 0) {
-      fd.append("socialLinks", JSON.stringify(socialLinks));
-    }
+    fd.append("socialLinks", JSON.stringify({
+      github: data.github || "",
+      linkedin: data.linkedin || "",
+      twitter: data.twitter || "",
+      instagram: data.instagram || "",
+      youtube: data.youtube || "",
+    }));
 
     const apiCall = isEdit ? () => updateProfile(fd) : () => createProfile(fd);
 
@@ -188,14 +193,24 @@ export default function ProfileSection() {
               {profile.role && <p className="text-sm font-medium text-zinc-600">{profile.role}</p>}
               <p className="mt-1 text-zinc-600 whitespace-pre-line">{profile.bio}</p>
             </div>
-            <motion.button
-              onClick={openEdit}
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 transition-colors cursor-pointer shrink-0 self-start"
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-            >
-              Edit Profile
-            </motion.button>
+            <div className="flex gap-2 shrink-0 self-start">
+              <motion.button
+                onClick={openEdit}
+                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96 }}
+              >
+                Edit Profile
+              </motion.button>
+              <motion.button
+                onClick={handleDeleteProfile}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors cursor-pointer"
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96 }}
+              >
+                Delete
+              </motion.button>
+            </div>
           </div>
 
           {profile.photo && (
@@ -313,61 +328,56 @@ export default function ProfileSection() {
         onClose={() => setModalOpen(false)}
         title={isEdit ? "Edit Profile" : "Create Profile"}
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Field label="Name" required>
             <input
               type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              {...register("name")}
               className="input-field"
               placeholder="Your full name"
-              required
             />
+            {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>}
           </Field>
           <Field label="Role" required>
             <input
               type="text"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
+              {...register("role")}
               className="input-field"
               placeholder="e.g. Full Stack Developer"
-              required
             />
+            {errors.role && <p className="text-sm text-red-600 mt-1">{errors.role.message}</p>}
           </Field>
           <Field label="Email" required>
             <input
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              {...register("email")}
               className="input-field"
               placeholder="your@email.com"
-              required
             />
+            {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email.message}</p>}
           </Field>
           <Field label="Bio" required>
             <textarea
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
+              {...register("bio")}
               className="input-field min-h-24 resize-y"
               placeholder="A short bio about yourself"
-              required
             />
+            {errors.bio && <p className="text-sm text-red-600 mt-1">{errors.bio.message}</p>}
           </Field>
           <Field label="Typewriter Strings (one per line)" required>
             <textarea
-              value={typewriterStrings}
-              onChange={(e) => setTypewriterStrings(e.target.value)}
+              {...register("typewriterStrings")}
               className="input-field min-h-20 resize-y"
               placeholder={"Full Stack Developer\nUI/UX Designer\nOpen Source Contributor"}
-              required
             />
+            {errors.typewriterStrings && <p className="text-sm text-red-600 mt-1">{errors.typewriterStrings.message}</p>}
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Phone">
-              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="input-field" placeholder="+1 234 567 890" />
+              <input type="tel" {...register("phone")} className="input-field" placeholder="+1 234 567 890" />
             </Field>
             <Field label="Address">
-              <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} className="input-field" placeholder="City, Country" />
+              <input type="text" {...register("address")} className="input-field" placeholder="City, Country" />
             </Field>
           </div>
           <Field label="Photo">
@@ -429,19 +439,24 @@ export default function ProfileSection() {
             <h3 className="text-sm font-semibold text-zinc-700 mb-3">Social Links</h3>
             <div className="space-y-3">
               <Field label="GitHub">
-                <input type="url" value={github} onChange={(e) => setGithub(e.target.value)} className="input-field" placeholder="https://github.com/username" />
+                <input type="url" {...register("github")} className="input-field" placeholder="https://github.com/username" />
+                {errors.github && <p className="text-sm text-red-600 mt-1">{errors.github.message}</p>}
               </Field>
               <Field label="LinkedIn">
-                <input type="url" value={linkedin} onChange={(e) => setLinkedin(e.target.value)} className="input-field" placeholder="https://linkedin.com/in/username" />
+                <input type="url" {...register("linkedin")} className="input-field" placeholder="https://linkedin.com/in/username" />
+                {errors.linkedin && <p className="text-sm text-red-600 mt-1">{errors.linkedin.message}</p>}
               </Field>
               <Field label="Twitter">
-                <input type="url" value={twitter} onChange={(e) => setTwitter(e.target.value)} className="input-field" placeholder="https://twitter.com/username" />
+                <input type="url" {...register("twitter")} className="input-field" placeholder="https://twitter.com/username" />
+                {errors.twitter && <p className="text-sm text-red-600 mt-1">{errors.twitter.message}</p>}
               </Field>
               <Field label="Instagram">
-                <input type="url" value={instagram} onChange={(e) => setInstagram(e.target.value)} className="input-field" placeholder="https://instagram.com/username" />
+                <input type="url" {...register("instagram")} className="input-field" placeholder="https://instagram.com/username" />
+                {errors.instagram && <p className="text-sm text-red-600 mt-1">{errors.instagram.message}</p>}
               </Field>
               <Field label="YouTube">
-                <input type="url" value={youtube} onChange={(e) => setYoutube(e.target.value)} className="input-field" placeholder="https://youtube.com/@channel" />
+                <input type="url" {...register("youtube")} className="input-field" placeholder="https://youtube.com/@channel" />
+                {errors.youtube && <p className="text-sm text-red-600 mt-1">{errors.youtube.message}</p>}
               </Field>
             </div>
           </div>
